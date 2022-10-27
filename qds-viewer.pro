@@ -1,7 +1,7 @@
 # -*- mode: Makefile -*-
 
 TARGET = qds-viewer
-CONFIG += c++14 qt opengl debug
+CONFIG += c++17 qt opengl debug
 QT += gui widgets opengl xml
 equals (QT_MAJOR_VERSION, 6) {
     QT += openglwidgets

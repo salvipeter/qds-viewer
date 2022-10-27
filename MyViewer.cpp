@@ -19,7 +19,7 @@
 MyViewer::MyViewer(QWidget *parent) :
   QGLViewer(parent), resolution(32),
   mean_min(0.0), mean_max(0.0), cutoff_ratio(0.05),
-  show_control_points(false), show_solid(true), show_wireframe(false),
+  show_control_points(false), show_boundaries(false), show_solid(true), show_wireframe(false),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
   last_filename("")
 {
@@ -151,6 +151,7 @@ bool MyViewer::openQDS(std::string filename, bool update_view) {
 
 void MyViewer::init() {
   glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, 1);
+  glClearColor(0.33, 0.33, 0.43, 1.0);
 
   QImage img(":/isophotes.png");
   glGenTextures(1, &isophote_texture);
@@ -185,6 +186,10 @@ void MyViewer::draw() {
   if (show_control_points)
     for (const auto &s : surfaces)
       drawControlNet(s);
+
+  if (show_boundaries)
+    for (const auto &s : surfaces)
+      drawBoundaries(s);
 
   glPolygonMode(GL_FRONT_AND_BACK, !show_solid && show_wireframe ? GL_LINE : GL_FILL);
   glEnable(GL_POLYGON_OFFSET_FILL);
@@ -267,6 +272,39 @@ void MyViewer::drawControlNet(const Geometry::BSSurface &surface) const {
   glEnable(GL_LIGHTING);
 }
 
+void MyViewer::drawBoundaries(const Geometry::BSSurface &surface) const {
+  glDisable(GL_LIGHTING);
+  glEnable(GL_LINE_SMOOTH);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glLineWidth(5.0);
+  glColor3d(0.0, 0.0, 0.0);
+  for (size_t k = 0; k < 4; ++k) {
+    glBegin(GL_LINE_STRIP);
+    for (size_t i = 0; i < resolution; ++i) {
+      double u = (double)i / (resolution - 1), v;
+      if (k % 2 == 0)
+        u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
+      else
+        u = surface.basisV().low() * (1 - u) + surface.basisV().high() * u;
+      switch (k) {
+      case 0: v = surface.basisV().low(); break;
+      case 1: v = surface.basisU().low(); break;
+      case 2: v = surface.basisV().high(); break;
+      case 3: v = surface.basisU().high(); break;
+      default: ;
+      }
+      auto p = k % 2 == 0 ? surface.eval(u, v) : surface.eval(v, u);
+      glVertex3dv(p.data());
+    }
+    glEnd();
+  }
+  glLineWidth(1.0);
+  glDisable(GL_BLEND);
+  glDisable(GL_LINE_SMOOTH);
+  glEnable(GL_LIGHTING);
+}
+
 void MyViewer::keyPressEvent(QKeyEvent *e) {
   if (e->modifiers() == Qt::NoModifier)
     switch (e->key()) {
@@ -305,6 +343,10 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       break;
     case Qt::Key_C:
       show_control_points = !show_control_points;
+      update();
+      break;
+    case Qt::Key_B:
+      show_boundaries = !show_boundaries;
       update();
       break;
     case Qt::Key_S:
@@ -351,13 +393,15 @@ MyViewer::MyMesh MyViewer::generateMesh(const Geometry::BSSurface &surface) {
   mesh.request_vertex_normals();
 
   std::vector<MyMesh::VertexHandle> handles, tri;
-  std::map<MyMesh::VertexHandle, Vector> normals;
+  std::vector<std::pair<MyMesh::VertexHandle, Vector>> normals;
 
   Geometry::VectorMatrix der;
   for (size_t i = 0; i < resolution; ++i) {
     double u = (double)i / (double)(resolution - 1);
+    u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
     for (size_t j = 0; j < resolution; ++j) {
       double v = (double)j / (double)(resolution - 1);
+      v = surface.basisV().low() * (1 - v) + surface.basisV().high() * v;
       auto p = surface.eval(u, v, 2, der);
       auto h = mesh.add_vertex(Vector(p.data()));
       auto &Su = der[1][0];
@@ -372,8 +416,8 @@ MyViewer::MyMesh MyViewer::generateMesh(const Geometry::BSSurface &surface) {
       auto L = Suu * n;
       auto M = Suv * n;
       auto N = Svv * n;
-      normals[h] = Vector(n.data());
-      mesh.data(h).mean = (N * E - 2 * M * F - L * G) / (2 * (E * G - F * F));
+      mesh.set_normal(h, Vector((-n).data()));
+      mesh.data(h).mean = (N * E - 2 * M * F + L * G) / (2 * (E * G - F * F));
       handles.push_back(h);
     }
   }
@@ -390,16 +434,6 @@ MyViewer::MyMesh MyViewer::generateMesh(const Geometry::BSSurface &surface) {
       tri.push_back(handles[(i + 1) * resolution + j + 1]);
       mesh.add_face(tri);
     }
-
-  // Set consistent normal directions
-  mesh.update_vertex_normals();
-  for (const auto &[v, n] : normals) {
-    if (mesh.normal(v) * n < 0) {
-      mesh.set_normal(v) = -n;
-      mesh.data(v).mean *= -1;
-    } else
-      mesh.set_normal(v) = n;
-  }
   return mesh;
 }
 
@@ -419,6 +453,7 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;I: Set isophote line map</li>"
                "<li>&nbsp;E: Set environment texture</li>"
                "<li>&nbsp;C: Toggle control polygon visualization</li>"
+               "<li>&nbsp;B: Toggle boundary curve visualization</li>"
                "<li>&nbsp;S: Toggle solid (filled polygon) visualization</li>"
                "<li>&nbsp;W: Toggle wireframe visualization</li>"
                "</ul>"
