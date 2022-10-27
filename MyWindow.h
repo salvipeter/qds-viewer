@@ -17,7 +17,6 @@ public:
 
 private slots:
   void open();
-  void save();
   void setCutoff();
   void setRange();
   void setSlicing();

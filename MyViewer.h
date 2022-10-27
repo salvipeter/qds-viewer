@@ -6,6 +6,8 @@
 #include <QGLViewer/qglviewer.h>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 
+#include <geometry.hh>
+
 using qglviewer::Vec;
 
 class MyViewer : public QGLViewer {
@@ -25,9 +27,7 @@ public:
   inline void setSlicingDir(double x, double y, double z);
   inline double getSlicingScaling() const;
   inline void setSlicingScaling(double scaling);
-  bool openMesh(const std::string &filename, bool update_view = true);
-  bool openBezier(const std::string &filename, bool update_view = true);
-  bool saveBezier(const std::string &filename);
+  bool openQDS(std::string filename, bool update_view = true);
 
 signals:
   void startComputation(QString message);
@@ -37,10 +37,7 @@ signals:
 protected:
   virtual void init() override;
   virtual void draw() override;
-  virtual void drawWithNames() override;
-  virtual void postSelection(const QPoint &p) override;
   virtual void keyPressEvent(QKeyEvent *e) override;
-  virtual void mouseMoveEvent(QMouseEvent *e) override;
   virtual QString helpString() const override;
 
 private:
@@ -56,42 +53,22 @@ private:
 
   // Mesh
   void updateMesh(bool update_mean_range = true);
-  void updateVertexNormals();
-#ifdef USE_JET_FITTING
-  void updateWithJetFit(size_t neighbors);
-#endif
-  void localSystem(const Vector &normal, Vector &u, Vector &v);
-  double voronoiWeight(MyMesh::HalfedgeHandle in_he);
   void updateMeanMinMax();
-  void updateMeanCurvature();
 
-  // Bezier
-  static void bernsteinAll(size_t n, double u, std::vector<double> &coeff);
-  void generateMesh(size_t resolution);
+  MyMesh generateMesh(const Geometry::BSSurface &surface);
 
   // Visualization
   void setupCamera();
   Vec meanMapColor(double d) const;
-  void drawControlNet() const;
-  void drawAxes() const;
-  void drawAxesWithNames() const;
-  static Vec intersectLines(const Vec &ap, const Vec &ad, const Vec &bp, const Vec &bd);
-
-  // Other
-  void fairMesh();
+  void drawControlNet(const Geometry::BSSurface &surface) const;
 
   //////////////////////
   // Member variables //
   //////////////////////
 
-  enum class ModelType { NONE, MESH, BEZIER_SURFACE } model_type;
-
-  // Mesh
-  MyMesh mesh;
-
-  // Bezier
-  size_t degree[2];
-  std::vector<Vec> control_points;
+  std::vector<Geometry::BSSurface> surfaces;
+  std::vector<MyMesh> meshes;
+  size_t resolution;
 
   // Visualization
   double mean_min, mean_max, cutoff_ratio;
@@ -100,13 +77,6 @@ private:
   GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
   Vector slicing_dir;
   double slicing_scaling;
-  int selected_vertex;
-  struct ModificationAxes {
-    bool shown;
-    float size;
-    int selected_axis;
-    Vec position, grabbed_pos, original_pos;
-  } axes;
   std::string last_filename;
 };
 
