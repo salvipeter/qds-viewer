@@ -262,13 +262,6 @@ void MyViewer::drawControlNet(const Geometry::BSSurface &surface) const {
       glEnd();
     }
   glLineWidth(1.0);
-  glPointSize(8.0);
-  glColor3d(1.0, 0.0, 1.0);
-  glBegin(GL_POINTS);
-  for (const auto &p : surface.controlPoints())
-    glVertex3dv(p.data());
-  glEnd();
-  glPointSize(1.0);
   glEnable(GL_LIGHTING);
 }
 
