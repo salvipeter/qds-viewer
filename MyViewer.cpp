@@ -251,6 +251,9 @@ void MyViewer::draw() {
 
 void MyViewer::drawControlNet(const Geometry::BSSurface &surface) const {
   glDisable(GL_LIGHTING);
+  glEnable(GL_LINE_SMOOTH);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glLineWidth(3.0);
   glColor3d(0.3, 0.3, 1.0);
   auto n_cpts = surface.numControlPoints();
@@ -262,6 +265,8 @@ void MyViewer::drawControlNet(const Geometry::BSSurface &surface) const {
       glEnd();
     }
   glLineWidth(1.0);
+  glDisable(GL_BLEND);
+  glDisable(GL_LINE_SMOOTH);
   glEnable(GL_LIGHTING);
 }
 
