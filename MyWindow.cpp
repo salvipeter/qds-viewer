@@ -7,7 +7,7 @@
 MyWindow::MyWindow(QApplication *parent) :
   QMainWindow(), parent(parent), last_directory(".")
 {
-  setWindowTitle(tr("Sample 3D Framework"));
+  setWindowTitle(tr("QDS Viewer"));
   setStatusBar(new QStatusBar);
   progress = new QProgressBar;
   progress->setMinimum(0); progress->setMaximum(100);

@@ -17,9 +17,10 @@
 #endif
 
 MyViewer::MyViewer(QWidget *parent) :
-  QGLViewer(parent), resolution(32),
+  QGLViewer(parent), resolution(32), isoline_resolution(10),
   mean_min(0.0), mean_max(0.0), cutoff_ratio(0.05),
-  show_control_points(false), show_boundaries(false), show_solid(true), show_wireframe(false),
+  show_control_points(false), show_boundaries(false), show_isolines(false),
+  show_solid(true), show_wireframe(false),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
   last_filename("")
 {
@@ -191,6 +192,10 @@ void MyViewer::draw() {
     for (const auto &s : surfaces)
       drawBoundaries(s);
 
+  if (show_isolines)
+    for (const auto &s : surfaces)
+      drawIsolines(s);
+
   glPolygonMode(GL_FRONT_AND_BACK, !show_solid && show_wireframe ? GL_LINE : GL_FILL);
   glEnable(GL_POLYGON_OFFSET_FILL);
   glPolygonOffset(1, 1);
@@ -303,6 +308,39 @@ void MyViewer::drawBoundaries(const Geometry::BSSurface &surface) const {
   glEnable(GL_LIGHTING);
 }
 
+void MyViewer::drawIsolines(const Geometry::BSSurface &surface) const {
+  glDisable(GL_LIGHTING);
+  glEnable(GL_LINE_SMOOTH);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glLineWidth(3.0);
+  glColor3d(0.3, 0.7, 0.7);
+  for (size_t k = 0; k < 2; ++k) {
+    for (size_t i = 0; i <= isoline_resolution; ++i) {
+      double u = (double)i / isoline_resolution;
+      if (k == 0)
+        u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
+      else
+        u = surface.basisV().low() * (1 - u) + surface.basisV().high() * u;
+      glBegin(GL_LINE_STRIP);
+      for (size_t j = 0; j < resolution; ++j) {
+        double v = (double)j / (resolution - 1);
+        if (k == 0)
+          v = surface.basisV().low() * (1 - v) + surface.basisV().high() * v;
+        else
+          v = surface.basisU().low() * (1 - v) + surface.basisU().high() * v;
+        auto p = k == 0 ? surface.eval(u, v) : surface.eval(v, u);
+        glVertex3dv(p.data());
+      }
+      glEnd();
+    }
+  }
+  glLineWidth(1.0);
+  glDisable(GL_BLEND);
+  glDisable(GL_LINE_SMOOTH);
+  glEnable(GL_LIGHTING);
+}
+
 void MyViewer::keyPressEvent(QKeyEvent *e) {
   if (e->modifiers() == Qt::NoModifier)
     switch (e->key()) {
@@ -347,6 +385,10 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       show_boundaries = !show_boundaries;
       update();
       break;
+    case Qt::Key_N:
+      show_isolines = !show_isolines;
+      update();
+      break;
     case Qt::Key_S:
       show_solid = !show_solid;
       update();
@@ -363,6 +405,8 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Plus:
       if (visualization == Visualization::SLICING)
         slicing_scaling *= 2;
+      else if (show_isolines)
+        isoline_resolution *= 2;
       else {
         resolution *= 2;
         updateMesh();
@@ -372,6 +416,8 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Minus:
       if (visualization == Visualization::SLICING)
         slicing_scaling /= 2;
+      else if (show_isolines && isoline_resolution > 5)
+        isoline_resolution /= 2;
       else if (resolution > 4) {
         resolution /= 2;
         updateMesh();
@@ -445,13 +491,14 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;P: Set plain map (no coloring)</li>"
                "<li>&nbsp;M: Set mean curvature map</li>"
                "<li>&nbsp;L: Set slicing map<ul>"
-               "<li>&nbsp;+: Increase resolution or slicing density</li>"
-               "<li>&nbsp;-: Decrease resolution or slicing density</li>"
+               "<li>&nbsp;+: Increase resolution or isoline/slicing density</li>"
+               "<li>&nbsp;-: Decrease resolution or isoline/slicing density</li>"
                "<li>&nbsp;*: Set slicing direction to view</li></ul></li>"
                "<li>&nbsp;I: Set isophote line map</li>"
                "<li>&nbsp;E: Set environment texture</li>"
                "<li>&nbsp;C: Toggle control polygon visualization</li>"
                "<li>&nbsp;B: Toggle boundary curve visualization</li>"
+               "<li>&nbsp;N: Toggle isoline curve visualization</li>"
                "<li>&nbsp;S: Toggle solid (filled polygon) visualization</li>"
                "<li>&nbsp;W: Toggle wireframe visualization</li>"
                "</ul>"
