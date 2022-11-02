@@ -1,10 +1,19 @@
-double MyViewer::getCutoffRatio() const {
-  return cutoff_ratio;
+double MyViewer::getMeanCutoffRatio() const {
+  return mean_cutoff_ratio;
 }
 
-void MyViewer::setCutoffRatio(double ratio) {
-  cutoff_ratio = ratio;
-  updateMeanMinMax();
+void MyViewer::setMeanCutoffRatio(double ratio) {
+  mean_cutoff_ratio = ratio;
+  updateCurvatureMinMax();
+}
+
+double MyViewer::getGaussianCutoffRatio() const {
+  return gaussian_cutoff_ratio;
+}
+
+void MyViewer::setGaussianCutoffRatio(double ratio) {
+  gaussian_cutoff_ratio = ratio;
+  updateCurvatureMinMax();
 }
 
 double MyViewer::getMeanMin() const {
@@ -21,6 +30,22 @@ double MyViewer::getMeanMax() const {
 
 void MyViewer::setMeanMax(double max) {
   mean_max = max;
+}
+
+double MyViewer::getGaussianMin() const {
+  return gaussian_min;
+}
+
+void MyViewer::setGaussianMin(double min) {
+  gaussian_min = min;
+}
+
+double MyViewer::getGaussianMax() const {
+  return gaussian_max;
+}
+
+void MyViewer::setGaussianMax(double max) {
+  gaussian_max = max;
 }
 
 const double *MyViewer::getSlicingDir() const {

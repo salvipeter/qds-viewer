@@ -17,12 +17,18 @@ public:
   explicit MyViewer(QWidget *parent);
   virtual ~MyViewer();
 
-  inline double getCutoffRatio() const;
-  inline void setCutoffRatio(double ratio);
+  inline double getMeanCutoffRatio() const;
+  inline void setMeanCutoffRatio(double ratio);
   inline double getMeanMin() const;
   inline void setMeanMin(double min);
   inline double getMeanMax() const;
   inline void setMeanMax(double max);
+  inline double getGaussianCutoffRatio() const;
+  inline void setGaussianCutoffRatio(double ratio);
+  inline double getGaussianMin() const;
+  inline void setGaussianMin(double min);
+  inline double getGaussianMax() const;
+  inline void setGaussianMax(double max);
   inline const double *getSlicingDir() const;
   inline void setSlicingDir(double x, double y, double z);
   inline double getSlicingScaling() const;
@@ -45,21 +51,21 @@ private:
     using Point  = OpenMesh::Vec3d; // the default would be Vec3f
     using Normal = OpenMesh::Vec3d;
     VertexTraits {
-      double mean;              // approximated mean curvature
+      double mean;              // mean curvature
+      double gaussian;          // Gaussian curvature
     };
   };
   using MyMesh = OpenMesh::TriMesh_ArrayKernelT<MyTraits>;
   using Vector = OpenMesh::VectorT<double,3>;
 
   // Mesh
-  void updateMesh(bool update_mean_range = true);
-  void updateMeanMinMax();
+  void updateMesh(bool update_curvature_range = true);
+  void updateCurvatureMinMax();
 
   MyMesh generateMesh(const Geometry::BSSurface &surface);
 
   // Visualization
   void setupCamera();
-  Vec meanMapColor(double d) const;
   void drawControlNet(const Geometry::BSSurface &surface) const;
   void drawBoundaries(const Geometry::BSSurface &surface) const;
   void drawIsolines(const Geometry::BSSurface &surface) const;
@@ -73,9 +79,10 @@ private:
   size_t resolution, isoline_resolution;
 
   // Visualization
-  double mean_min, mean_max, cutoff_ratio;
+  double mean_min, mean_max, mean_cutoff_ratio;
+  double gaussian_min, gaussian_max, gaussian_cutoff_ratio;
   bool show_control_points, show_boundaries, show_isolines, show_solid, show_wireframe;
-  enum class Visualization { PLAIN, MEAN, SLICING, ISOPHOTES } visualization;
+  enum class Visualization { PLAIN, GAUSSIAN, MEAN, SLICING, ISOPHOTES } visualization;
   GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
   Vector slicing_dir;
   double slicing_scaling;

@@ -18,7 +18,8 @@
 
 MyViewer::MyViewer(QWidget *parent) :
   QGLViewer(parent), resolution(32), isoline_resolution(10),
-  mean_min(0.0), mean_max(0.0), cutoff_ratio(0.05),
+  mean_min(0.0), mean_max(0.0), mean_cutoff_ratio(0.05),
+  gaussian_min(0.0), gaussian_max(0.0), gaussian_cutoff_ratio(0.05),
   show_control_points(false), show_boundaries(false), show_isolines(false),
   show_solid(true), show_wireframe(false),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
@@ -32,20 +33,26 @@ MyViewer::~MyViewer() {
   glDeleteTextures(1, &slicing_texture);
 }
 
-void MyViewer::updateMeanMinMax() {
+void MyViewer::updateCurvatureMinMax() {
   if (meshes.empty())
     return;
 
-  std::vector<double> mean;
+  std::vector<double> mean, gaussian;
   for (const auto &mesh : meshes)
-    for (auto v : mesh.vertices())
+    for (auto v : mesh.vertices()) {
       mean.push_back(mesh.data(v).mean);
+      gaussian.push_back(mesh.data(v).gaussian);
+    }
   size_t n = mean.size();
 
   std::sort(mean.begin(), mean.end());
-  size_t k = (double)n * cutoff_ratio;
+  std::sort(gaussian.begin(), gaussian.end());
+  size_t k = (double)n * mean_cutoff_ratio;
   mean_min = std::min(mean[k ? k-1 : 0], 0.0);
   mean_max = std::max(mean[k ? n-k : n-1], 0.0);
+  k = (double)n * gaussian_cutoff_ratio;
+  gaussian_min = std::min(gaussian[k ? k-1 : 0], 0.0);
+  gaussian_max = std::max(gaussian[k ? n-k : n-1], 0.0);
 }
 
 static Vec HSV2RGB(Vec hsv) {
@@ -70,13 +77,13 @@ static Vec HSV2RGB(Vec hsv) {
   return rgb;
 }
 
-Vec MyViewer::meanMapColor(double d) const {
+static Vec colorMap(double d, double min, double max) {
   double red = 0, green = 120, blue = 240; // Hue
   if (d < 0) {
-    double alpha = mean_min ? std::min(d / mean_min, 1.0) : 1.0;
+    double alpha = min ? std::min(d / min, 1.0) : 1.0;
     return HSV2RGB({green * (1 - alpha) + blue * alpha, 1, 1});
   }
-  double alpha = mean_max ? std::min(d / mean_max, 1.0) : 1.0;
+  double alpha = max ? std::min(d / max, 1.0) : 1.0;
   return HSV2RGB({green * (1 - alpha) + red * alpha, 1, 1});
 }
 
@@ -85,7 +92,7 @@ void MyViewer::updateMesh(bool update_mean_range) {
   for (const auto &s : surfaces)
     meshes.push_back(generateMesh(s));
   if (update_mean_range)
-    updateMeanMinMax();
+    updateCurvatureMinMax();
 }
 
 void MyViewer::setupCamera() {
@@ -221,7 +228,9 @@ void MyViewer::draw() {
         glBegin(GL_POLYGON);
         for (auto v : mesh.fv_range(f)) {
           if (visualization == Visualization::MEAN)
-            glColor3dv(meanMapColor(mesh.data(v).mean));
+            glColor3dv(colorMap(mesh.data(v).mean, mean_min, mean_max));
+          else if (visualization == Visualization::GAUSSIAN)
+            glColor3dv(colorMap(mesh.data(v).gaussian, gaussian_min, gaussian_max));
           else if (visualization == Visualization::SLICING)
             glTexCoord1d(mesh.point(v) | slicing_dir * slicing_scaling);
           glNormal3dv(mesh.normal(v).data());
@@ -359,6 +368,10 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       visualization = Visualization::PLAIN;
       update();
       break;
+    case Qt::Key_G:
+      visualization = Visualization::GAUSSIAN;
+      update();
+      break;
     case Qt::Key_M:
       visualization = Visualization::MEAN;
       update();
@@ -462,6 +475,7 @@ MyViewer::MyMesh MyViewer::generateMesh(const Geometry::BSSurface &surface) {
       auto N = Svv * n;
       mesh.set_normal(h, Vector((-n).data()));
       mesh.data(h).mean = (N * E - 2 * M * F + L * G) / (2 * (E * G - F * F));
+      mesh.data(h).gaussian = (L * N - M * M) / (E * G - F * F);
       handles.push_back(h);
     }
   }
@@ -489,6 +503,7 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;R: Reload model</li>"
                "<li>&nbsp;O: Toggle orthographic projection</li>"
                "<li>&nbsp;P: Set plain map (no coloring)</li>"
+               "<li>&nbsp;G: Set Gaussian curvature map</li>"
                "<li>&nbsp;M: Set mean curvature map</li>"
                "<li>&nbsp;L: Set slicing map<ul>"
                "<li>&nbsp;+: Increase resolution or isoline/slicing density</li>"
