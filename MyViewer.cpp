@@ -429,9 +429,10 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Minus:
       if (visualization == Visualization::SLICING)
         slicing_scaling /= 2;
-      else if (show_isolines && isoline_resolution > 5)
-        isoline_resolution /= 2;
-      else if (resolution > 4) {
+      else if (show_isolines) {
+        if (isoline_resolution > 5)
+          isoline_resolution /= 2;
+      } else if (resolution > 4) {
         resolution /= 2;
         updateMesh();
       }
