@@ -23,7 +23,7 @@ MyViewer::MyViewer(QWidget *parent) :
   show_control_points(false), show_boundaries(false), show_isolines(false),
   show_solid(true), show_wireframe(false),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
-  last_filename("")
+  hidden(0), hidden_acc(0), last_filename("")
 {
 }
 
@@ -192,16 +192,19 @@ void MyViewer::init() {
 
 void MyViewer::draw() {
   if (show_control_points)
-    for (const auto &s : surfaces)
-      drawControlNet(s);
+    for (size_t i = 0; i < surfaces.size(); ++i)
+      if (hidden != i + 1)
+        drawControlNet(surfaces[i]);
 
   if (show_boundaries)
-    for (const auto &s : surfaces)
-      drawBoundaries(s);
+    for (size_t i = 0; i < surfaces.size(); ++i)
+      if (hidden != i + 1)
+      drawBoundaries(surfaces[i]);
 
   if (show_isolines)
-    for (const auto &s : surfaces)
-      drawIsolines(s);
+    for (size_t i = 0; i < surfaces.size(); ++i)
+      if (hidden != i + 1)
+        drawIsolines(surfaces[i]);
 
   glPolygonMode(GL_FRONT_AND_BACK, !show_solid && show_wireframe ? GL_LINE : GL_FILL);
   glEnable(GL_POLYGON_OFFSET_FILL);
@@ -223,21 +226,24 @@ void MyViewer::draw() {
       glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
       glEnable(GL_TEXTURE_1D);
     }
-    for (const auto &mesh : meshes)
-      for (auto f : mesh.faces()) {
-        glBegin(GL_POLYGON);
-        for (auto v : mesh.fv_range(f)) {
-          if (visualization == Visualization::MEAN)
-            glColor3dv(colorMap(mesh.data(v).mean, mean_min, mean_max));
-          else if (visualization == Visualization::GAUSSIAN)
-            glColor3dv(colorMap(mesh.data(v).gaussian, gaussian_min, gaussian_max));
-          else if (visualization == Visualization::SLICING)
-            glTexCoord1d(mesh.point(v) | slicing_dir * slicing_scaling);
-          glNormal3dv(mesh.normal(v).data());
-          glVertex3dv(mesh.point(v).data());
+    for (size_t i = 0; i < meshes.size(); ++i)
+      if (hidden != i + 1) {
+        const auto &mesh = meshes[i];
+        for (auto f : mesh.faces()) {
+          glBegin(GL_POLYGON);
+          for (auto v : mesh.fv_range(f)) {
+            if (visualization == Visualization::MEAN)
+              glColor3dv(colorMap(mesh.data(v).mean, mean_min, mean_max));
+            else if (visualization == Visualization::GAUSSIAN)
+              glColor3dv(colorMap(mesh.data(v).gaussian, gaussian_min, gaussian_max));
+            else if (visualization == Visualization::SLICING)
+              glTexCoord1d(mesh.point(v) | slicing_dir * slicing_scaling);
+            glNormal3dv(mesh.normal(v).data());
+            glVertex3dv(mesh.point(v).data());
+          }
+          glEnd();
         }
-        glEnd();
-    }
+      }
     if (visualization == Visualization::ISOPHOTES) {
       glDisable(GL_TEXTURE_GEN_S);
       glDisable(GL_TEXTURE_GEN_T);
@@ -252,12 +258,15 @@ void MyViewer::draw() {
     glPolygonMode(GL_FRONT, GL_LINE);
     glColor3d(0.0, 0.0, 0.0);
     glDisable(GL_LIGHTING);
-    for (const auto &mesh : meshes)
-      for (auto f : mesh.faces()) {
-        glBegin(GL_POLYGON);
-        for (auto v : mesh.fv_range(f))
-          glVertex3dv(mesh.point(v).data());
-        glEnd();
+    for (size_t i = 0; i < meshes.size(); ++i)
+      if (hidden != i + 1) {
+        const auto &mesh = meshes[i];
+        for (auto f : mesh.faces()) {
+          glBegin(GL_POLYGON);
+          for (auto v : mesh.fv_range(f))
+            glVertex3dv(mesh.point(v).data());
+          glEnd();
+        }
       }
     glEnable(GL_LIGHTING);
   }
@@ -351,6 +360,10 @@ void MyViewer::drawIsolines(const Geometry::BSSurface &surface) const {
 }
 
 void MyViewer::keyPressEvent(QKeyEvent *e) {
+  if (e->key() == Qt::Key_Question) {
+    help();
+    return;
+  }
   if (e->modifiers() == Qt::NoModifier)
     switch (e->key()) {
     case Qt::Key_R:
@@ -408,6 +421,24 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       break;
     case Qt::Key_W:
       show_wireframe = !show_wireframe;
+      update();
+      break;
+    case Qt::Key_0: hidden_acc = hidden_acc * 10 + 0; break;
+    case Qt::Key_1: hidden_acc = hidden_acc * 10 + 1; break;
+    case Qt::Key_2: hidden_acc = hidden_acc * 10 + 2; break;
+    case Qt::Key_3: hidden_acc = hidden_acc * 10 + 3; break;
+    case Qt::Key_4: hidden_acc = hidden_acc * 10 + 4; break;
+    case Qt::Key_5: hidden_acc = hidden_acc * 10 + 5; break;
+    case Qt::Key_6: hidden_acc = hidden_acc * 10 + 6; break;
+    case Qt::Key_7: hidden_acc = hidden_acc * 10 + 7; break;
+    case Qt::Key_8: hidden_acc = hidden_acc * 10 + 8; break;
+    case Qt::Key_9: hidden_acc = hidden_acc * 10 + 9; break;
+    case Qt::Key_H:
+      if (hidden == 0)
+        hidden = hidden_acc;
+      else
+        hidden = 0;
+      hidden_acc = 0;
       update();
       break;
     default:
@@ -517,6 +548,8 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;N: Toggle isoline curve visualization</li>"
                "<li>&nbsp;S: Toggle solid (filled polygon) visualization</li>"
                "<li>&nbsp;W: Toggle wireframe visualization</li>"
+               "<li>&nbsp;&lt;n&gt;H: Hide surface #n (H shows it again)</li>"
+               "<li>&nbsp;?: This help</li>"
                "</ul>"
                "<p align=\"right\">Peter Salvi</p>");
   return text;

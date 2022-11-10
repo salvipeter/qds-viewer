@@ -86,6 +86,7 @@ private:
   GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
   Vector slicing_dir;
   double slicing_scaling;
+  size_t hidden, hidden_acc;
   std::string last_filename;
 };
 
