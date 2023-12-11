@@ -284,7 +284,7 @@ void MyViewer::drawControlNet(const Geometry::BSSurface &surface) const {
     for (size_t i = 0; i < n_cpts[k]; ++i) {
       glBegin(GL_LINE_STRIP);
       for (size_t j = 0; j < n_cpts[1-k]; ++j)
-        glVertex3dv(surface.controlPoint(k ? i : j, k ? j : i).data());
+        glVertex3dv(surface.controlPoint(k ? j : i, k ? i : j).data());
       glEnd();
     }
   glLineWidth(1.0);
