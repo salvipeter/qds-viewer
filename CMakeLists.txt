@@ -9,7 +9,6 @@ find_package(OpenMesh REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core OpenGL OpenGLWidgets Widgets Xml)
 find_package(QGLViewer REQUIRED)
 find_package(LibGeom REQUIRED)
-message(${LIBGEOM_LIBRARY})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
