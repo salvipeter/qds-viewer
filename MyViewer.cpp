@@ -57,9 +57,15 @@ void MyViewer::updateCurvatureMinMax() {
   size_t k = (double)n * mean_cutoff_ratio;
   mean_min = std::min(mean[k ? k-1 : 0], 0.0);
   mean_max = std::max(mean[k ? n-k : n-1], 0.0);
+  double larger = std::max(-mean_min, mean_max);
+  mean_min = -larger;
+  mean_max = larger;
   k = (double)n * gaussian_cutoff_ratio;
   gaussian_min = std::min(gaussian[k ? k-1 : 0], 0.0);
   gaussian_max = std::max(gaussian[k ? n-k : n-1], 0.0);
+  larger = std::max(-gaussian_min, gaussian_max);
+  gaussian_min = -larger;
+  gaussian_max = larger;
 }
 
 static Vec HSV2RGB(Vec hsv) {
