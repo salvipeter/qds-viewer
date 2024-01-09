@@ -58,11 +58,16 @@ private:
   using MyMesh = OpenMesh::TriMesh_ArrayKernelT<MyTraits>;
   using Vector = OpenMesh::VectorT<double,3>;
 
+  // I/O
+  using TrimCurve = std::shared_ptr<Geometry::BSCurve>;
+  using TrimLoop = std::vector<TrimCurve>;
+  bool findCurveLoops(const TrimLoop &curves, std::vector<TrimLoop> &loops) const;
+
   // Mesh
   void updateMesh(bool update_curvature_range = true);
   void updateCurvatureMinMax();
 
-  MyMesh generateMesh(const Geometry::BSSurface &surface);
+  MyMesh generateMesh(size_t i);
 
   // Visualization
   void setupCamera();
@@ -75,13 +80,15 @@ private:
   //////////////////////
 
   std::vector<Geometry::BSSurface> surfaces;
+  std::vector<std::vector<TrimLoop>> trim_loops;
   std::vector<MyMesh> meshes;
   size_t resolution, isoline_resolution;
 
   // Visualization
   double mean_min, mean_max, mean_cutoff_ratio;
   double gaussian_min, gaussian_max, gaussian_cutoff_ratio;
-  bool show_control_points, show_boundaries, show_isolines, show_solid, show_wireframe;
+  bool show_control_points, show_boundaries, show_isolines, show_solid, show_wireframe,
+    show_trimmed;
   enum class Visualization { PLAIN, GAUSSIAN, MEAN, SLICING, ISOPHOTES } visualization;
   GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
   Vector slicing_dir;

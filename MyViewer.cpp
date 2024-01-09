@@ -9,6 +9,13 @@
 
 #include <OpenMesh/Core/IO/MeshIO.hh>
 
+#define ANSI_DECLARATORS
+#define REAL double
+#define VOID void
+extern "C" {
+#include <triangle.h>
+}
+
 #include "MyViewer.h"
 
 #ifdef _WIN32
@@ -21,7 +28,7 @@ MyViewer::MyViewer(QWidget *parent) :
   mean_min(0.0), mean_max(0.0), mean_cutoff_ratio(0.05),
   gaussian_min(0.0), gaussian_max(0.0), gaussian_cutoff_ratio(0.05),
   show_control_points(false), show_boundaries(false), show_isolines(false),
-  show_solid(true), show_wireframe(false),
+  show_solid(true), show_wireframe(false), show_trimmed(true),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
   hidden(0), hidden_acc(0), last_filename("")
 {
@@ -89,8 +96,8 @@ static Vec colorMap(double d, double min, double max) {
 
 void MyViewer::updateMesh(bool update_mean_range) {
   meshes.clear();
-  for (const auto &s : surfaces)
-    meshes.push_back(generateMesh(s));
+  for (size_t i = 0; i < surfaces.size(); ++i)
+    meshes.push_back(generateMesh(i));
   if (update_mean_range)
     updateCurvatureMinMax();
 }
@@ -119,19 +126,63 @@ void MyViewer::setupCamera() {
   update();
 }
 
+bool MyViewer::findCurveLoops(const TrimLoop &curves, std::vector<TrimLoop> &loops) const {
+  double tolerance = 1e-10;
+  std::list<TrimCurve> remaining(curves.begin(), curves.end());
+  while (!remaining.empty()) {
+    TrimLoop current;
+    current.push_back(remaining.front());
+    remaining.pop_front();
+    while (true) {
+      const auto &p = current.back()->controlPoints().back();
+      bool found = false;
+      for (auto it = remaining.begin(); it != remaining.end(); ++it) {
+        if ((p - (*it)->controlPoints().front()).norm() < tolerance)
+          found = true;
+        else if ((p - (*it)->controlPoints().back()).norm() < tolerance) {
+          (*it)->reverse();
+          found = true;
+        }
+        if (found) {
+          current.push_back(*it);
+          remaining.erase(it);
+          break;
+        }
+      }
+      if (!found) {
+        if (current.size() != 1 &&
+            (p - current.front()->controlPoints().front()).norm() < tolerance) {
+          loops.push_back(current);
+          break;
+        }
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 bool MyViewer::openQDS(std::string filename, bool update_view) {
   surfaces.clear();
+  trim_loops.clear();
   try {
     std::ifstream f(filename.c_str());
     f.exceptions(std::ios::failbit | std::ios::badbit);
     size_t n;
     f >> n;
     for (size_t i = 0; i < n; ++i) {
-      size_t du, dv, n_ku, n_kv;
+      size_t du, dv, n_ku, n_kv, trims = 0;
       double x, y, z;
       Geometry::DoubleVector ku, kv;
       Geometry::PointVector cpts;
-      f >> du >> dv;
+      int trims_or_du;
+      f >> trims_or_du;
+      if (trims_or_du < 0) {
+        trims = -trims_or_du;
+        f >> du;
+      } else
+        du = trims_or_du;
+      f >> dv;
       f >> n_ku;
       ku.resize(n_ku);
       for (size_t j = 0; j < n_ku; ++j)
@@ -146,6 +197,28 @@ bool MyViewer::openQDS(std::string filename, bool update_view) {
         cpts.emplace_back(x, y, z);
       }
       surfaces.emplace_back(du, dv, ku, kv, cpts);
+      TrimLoop trimcurves;
+      for (size_t j = 0; j < trims; ++j) {
+        size_t d, n_k;
+        double u, v;
+        Geometry::DoubleVector knots;
+        Geometry::PointVector points;
+        f >> d;
+        f >> n_k;
+        knots.resize(n_k);
+        for (size_t k = 0; k < n_k; ++k)
+          f >> knots[k];
+        size_t n_points = n_k - d - 1;
+        for (size_t k = 0; k < n_points; ++k) {
+          f >> u >> v;
+          points.emplace_back(u, v, 0);
+        }
+        trimcurves.push_back(std::make_shared<Geometry::BSCurve>(d, knots, points));
+      }
+      std::vector<TrimLoop> loops;
+      if (!findCurveLoops(trimcurves, loops))
+        return false;
+      trim_loops.push_back(loops);
     }
   } catch(std::ifstream::failure &) {
     return false;
@@ -403,6 +476,11 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       current_isophote_texture = environment_texture;
       update();
       break;
+    case Qt::Key_T:
+      show_trimmed = !show_trimmed;
+      updateMesh();
+      update();
+      break;
     case Qt::Key_C:
       show_control_points = !show_control_points;
       update();
@@ -477,53 +555,142 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     QGLViewer::keyPressEvent(e);
 }
 
-MyViewer::MyMesh MyViewer::generateMesh(const Geometry::BSSurface &surface) {
+MyViewer::MyMesh MyViewer::generateMesh(size_t i) {
   MyMesh mesh;
   mesh.request_vertex_normals();
 
   std::vector<MyMesh::VertexHandle> handles, tri;
   std::vector<std::pair<MyMesh::VertexHandle, Vector>> normals;
 
-  Geometry::VectorMatrix der;
-  for (size_t i = 0; i < resolution; ++i) {
-    double u = (double)i / (double)(resolution - 1);
-    u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
-    for (size_t j = 0; j < resolution; ++j) {
-      double v = (double)j / (double)(resolution - 1);
-      v = surface.basisV().low() * (1 - v) + surface.basisV().high() * v;
-      auto p = surface.eval(u, v, 2, der);
-      auto h = mesh.add_vertex(Vector(p.data()));
-      auto &Su = der[1][0];
-      auto &Sv = der[0][1];
-      auto &Suu = der[2][0];
-      auto &Suv = der[1][1];
-      auto &Svv = der[0][2];
-      auto n = (Su ^ Sv).normalize();
-      auto E = Su.normSqr();
-      auto F = Su * Sv;
-      auto G = Sv.normSqr();
-      auto L = Suu * n;
-      auto M = Suv * n;
-      auto N = Svv * n;
-      mesh.set_normal(h, Vector((-n).data()));
-      mesh.data(h).mean = (N * E - 2 * M * F + L * G) / (2 * (E * G - F * F));
-      mesh.data(h).gaussian = (L * N - M * M) / (E * G - F * F);
+  const auto &surface = surfaces[i];
+  const auto &trims = trim_loops[i];
+
+  // Create the topology
+  if (!show_trimmed || trims.empty()) {
+    // Not trimmed
+    for (size_t i = 0; i < resolution; ++i) {
+      double u = (double)i / (double)(resolution - 1);
+      u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
+      for (size_t j = 0; j < resolution; ++j) {
+        double v = (double)j / (double)(resolution - 1);
+        v = surface.basisV().low() * (1 - v) + surface.basisV().high() * v;
+        auto h = mesh.add_vertex(Vector(u, v, 0));
+        handles.push_back(h);
+      }
+    }
+    for (size_t i = 0; i < resolution - 1; ++i)
+      for (size_t j = 0; j < resolution - 1; ++j) {
+        tri.clear();
+        tri.push_back(handles[i * resolution + j]);
+        tri.push_back(handles[i * resolution + j + 1]);
+        tri.push_back(handles[(i + 1) * resolution + j]);
+        mesh.add_face(tri);
+        tri.clear();
+        tri.push_back(handles[(i + 1) * resolution + j]);
+        tri.push_back(handles[i * resolution + j + 1]);
+        tri.push_back(handles[(i + 1) * resolution + j + 1]);
+        mesh.add_face(tri);
+      }
+  } else {
+    // Trimmed case - create mesh with the Triangle library
+
+    std::vector<double> points;
+    std::vector<int> segments;
+    size_t start_index, end_index = 0;
+    for (const auto &loop : trims) {
+      start_index = end_index;
+      for (const auto &curve : loop) {
+        for (size_t i = 0; i < resolution; ++i) {
+          double t = (double)i / resolution;
+          t = curve->basis().low() * (1 - t) + curve->basis().high() * t;
+          auto p = curve->eval(t);
+          points.push_back(p[0]);
+          points.push_back(p[1]);
+        }
+      }
+      end_index = points.size() / 2;
+      for (size_t i = start_index; i < end_index; ++i) {
+        segments.push_back(i);
+        segments.push_back(i + 1);
+      }
+      segments.back() = start_index;
+    }
+
+    double hu = (surface.basisU().high() - surface.basisU().low()) / resolution;
+    double hv = (surface.basisV().high() - surface.basisV().low()) / resolution;
+    double maxarea = hu * hv / 2;
+
+    // Setup output data structure
+    struct triangulateio in, out;
+    in.pointlist = &points[0];
+    in.numberofpoints = points.size() / 2;
+    in.numberofpointattributes = 0;
+    in.pointmarkerlist = nullptr;
+    in.segmentlist = &segments[0];
+    in.numberofsegments = segments.size() / 2;
+    in.segmentmarkerlist = nullptr;
+    in.numberofholes = 0;
+    in.numberofregions = 0;
+
+    // Setup output data structure
+    out.pointlist = nullptr;
+    out.pointattributelist = nullptr;
+    out.pointmarkerlist = nullptr;
+    out.trianglelist = nullptr;
+    out.triangleattributelist = nullptr;
+    out.segmentlist = nullptr;
+    out.segmentmarkerlist = nullptr;
+
+    // Call the library function [with maximum triangle area = maxarea]
+    std::ostringstream cmd;
+    cmd << "pqa" << std::fixed << maxarea << "DBPzQ";
+    triangulate(const_cast<char *>(cmd.str().c_str()), &in, &out,
+                (struct triangulateio *)nullptr);
+
+    // Process the result
+    for (int i = 0; i < out.numberofpoints; ++i) {
+      auto h = mesh.add_vertex(Vector(out.pointlist[2*i], out.pointlist[2*i+1], 0));
       handles.push_back(h);
     }
-  }
-  for (size_t i = 0; i < resolution - 1; ++i)
-    for (size_t j = 0; j < resolution - 1; ++j) {
+    for (int i = 0; i < out.numberoftriangles; ++i) {
       tri.clear();
-      tri.push_back(handles[i * resolution + j]);
-      tri.push_back(handles[i * resolution + j + 1]);
-      tri.push_back(handles[(i + 1) * resolution + j]);
-      mesh.add_face(tri);
-      tri.clear();
-      tri.push_back(handles[(i + 1) * resolution + j]);
-      tri.push_back(handles[i * resolution + j + 1]);
-      tri.push_back(handles[(i + 1) * resolution + j + 1]);
+      tri.push_back(handles[out.trianglelist[3*i+0]]);
+      tri.push_back(handles[out.trianglelist[3*i+2]]);
+      tri.push_back(handles[out.trianglelist[3*i+1]]);
       mesh.add_face(tri);
     }
+
+    trifree(out.pointlist);
+    trifree(out.pointattributelist);
+    trifree(out.pointmarkerlist);
+    trifree(out.trianglelist);
+    trifree(out.triangleattributelist);
+    trifree(out.segmentlist);
+    trifree(out.segmentmarkerlist);
+  }
+
+  // Compute points, normals & curvatures
+  for (auto h : handles) {
+    const auto &uv = mesh.point(h);
+    Geometry::VectorMatrix der;
+    auto p = surface.eval(uv[0], uv[1], 2, der);
+    auto &Su = der[1][0];
+    auto &Sv = der[0][1];
+    auto &Suu = der[2][0];
+    auto &Suv = der[1][1];
+    auto &Svv = der[0][2];
+    auto n = (Su ^ Sv).normalize();
+    auto E = Su.normSqr();
+    auto F = Su * Sv;
+    auto G = Sv.normSqr();
+    auto L = Suu * n;
+    auto M = Suv * n;
+    auto N = Svv * n;
+    mesh.set_point(h, Vector(p.data()));
+    mesh.set_normal(h, Vector((-n).data()));
+    mesh.data(h).mean = (N * E - 2 * M * F + L * G) / (2 * (E * G - F * F));
+    mesh.data(h).gaussian = (L * N - M * M) / (E * G - F * F);
+  }
   return mesh;
 }
 
@@ -543,6 +710,7 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;*: Set slicing direction to view</li></ul></li>"
                "<li>&nbsp;I: Set isophote line map</li>"
                "<li>&nbsp;E: Set environment texture</li>"
+               "<li>&nbsp;T: Toggle trimming</li>"
                "<li>&nbsp;C: Toggle control polygon visualization</li>"
                "<li>&nbsp;B: Toggle boundary curve visualization</li>"
                "<li>&nbsp;N: Toggle isoline curve visualization</li>"

@@ -9,7 +9,7 @@ find_package(OpenMesh REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core OpenGL OpenGLWidgets Widgets Xml)
 find_package(QGLViewer REQUIRED)
 find_package(LibGeom REQUIRED)
-message(${LIBGEOM_LIBRARY})
+find_package(Triangle REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +33,7 @@ add_definitions(${Qt6Widgets_DEFINITIONS} -D_USE_MATH_DEFINES)
 include_directories(
   .
   ${LIBGEOM_INCLUDE_DIR}
+  ${TRIANGLE_DIR}
   ${OPENGL_INCLUDE_DIR}
   ${OPENMESH_INCLUDE_DIR}
   ${Qt6OpenGL_INCLUDE_DIRS}
@@ -47,6 +48,7 @@ add_executable(qds-viewer WIN32
   qds-viewer.qrc
   MyViewer.cpp
   MyWindow.cpp
+  ${TRIANGLE_DIR}/triangle.o
   )
 
 if(UNIX)
