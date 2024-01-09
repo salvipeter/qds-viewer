@@ -3,6 +3,7 @@ QDS File Format
 
 <number of quads>
 # Quad 1 starts here
+[0, if face normal is reversed]      # nothing otherwise
 [number of trimming curves, negated] # only if it is not zero
 <u-degree> <v-degree>
 <number of u-knots> <u-knot values: u1 u2 ...>

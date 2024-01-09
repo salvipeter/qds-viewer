@@ -122,8 +122,6 @@ void MyViewer::setupCamera() {
   camera()->showEntireScene();
 
   slicing_scaling = 20 / (box_max - box_min).max();
-
-  update();
 }
 
 bool MyViewer::findCurveLoops(const TrimLoop &curves, std::vector<TrimLoop> &loops) const {
@@ -175,13 +173,18 @@ bool MyViewer::openQDS(std::string filename, bool update_view) {
       double x, y, z;
       Geometry::DoubleVector ku, kv;
       Geometry::PointVector cpts;
-      int trims_or_du;
-      f >> trims_or_du;
-      if (trims_or_du < 0) {
-        trims = -trims_or_du;
+      int something;
+      f >> something;
+      if (something == 0) {
+        reversed.push_back(true);
+        f >> something;
+      } else
+        reversed.push_back(false);
+      if (something < 0) {
+        trims = -something;
         f >> du;
       } else
-        du = trims_or_du;
+        du = something;
       f >> dv;
       f >> n_ku;
       ku.resize(n_ku);
@@ -224,9 +227,10 @@ bool MyViewer::openQDS(std::string filename, bool update_view) {
     return false;
   }
   last_filename = filename;
-  updateMesh(update_view);
   if (update_view)
     setupCamera();
+  updateMesh(update_view);
+  update();
   return true;
 }
 
@@ -272,7 +276,7 @@ void MyViewer::draw() {
   if (show_boundaries)
     for (size_t i = 0; i < surfaces.size(); ++i)
       if (hidden != i + 1)
-      drawBoundaries(surfaces[i]);
+      drawBoundaries(i);
 
   if (show_isolines)
     for (size_t i = 0; i < surfaces.size(); ++i)
@@ -366,32 +370,49 @@ void MyViewer::drawControlNet(const Geometry::BSSurface &surface) const {
   glEnable(GL_LIGHTING);
 }
 
-void MyViewer::drawBoundaries(const Geometry::BSSurface &surface) const {
+void MyViewer::drawBoundaries(size_t index) const {
+  const auto surface = surfaces[index];
   glDisable(GL_LIGHTING);
   glEnable(GL_LINE_SMOOTH);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glLineWidth(5.0);
   glColor3d(0.0, 0.0, 0.0);
-  for (size_t k = 0; k < 4; ++k) {
-    glBegin(GL_LINE_STRIP);
-    for (size_t i = 0; i < resolution; ++i) {
-      double u = (double)i / (resolution - 1), v;
-      if (k % 2 == 0)
-        u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
-      else
-        u = surface.basisV().low() * (1 - u) + surface.basisV().high() * u;
-      switch (k) {
-      case 0: v = surface.basisV().low(); break;
-      case 1: v = surface.basisU().low(); break;
-      case 2: v = surface.basisV().high(); break;
-      case 3: v = surface.basisU().high(); break;
-      default: ;
+  if (!show_trimmed || trim_loops[index].empty()) {
+    for (size_t k = 0; k < 4; ++k) {
+      glBegin(GL_LINE_STRIP);
+      for (size_t i = 0; i < resolution; ++i) {
+        double u = (double)i / (resolution - 1), v;
+        if (k % 2 == 0)
+          u = surface.basisU().low() * (1 - u) + surface.basisU().high() * u;
+        else
+          u = surface.basisV().low() * (1 - u) + surface.basisV().high() * u;
+        switch (k) {
+        case 0: v = surface.basisV().low(); break;
+        case 1: v = surface.basisU().low(); break;
+        case 2: v = surface.basisV().high(); break;
+        case 3: v = surface.basisU().high(); break;
+        default: ;
+        }
+        auto p = k % 2 == 0 ? surface.eval(u, v) : surface.eval(v, u);
+        glVertex3dv(p.data());
       }
-      auto p = k % 2 == 0 ? surface.eval(u, v) : surface.eval(v, u);
-      glVertex3dv(p.data());
+      glEnd();
     }
-    glEnd();
+  } else {
+    for (const auto &loop : trim_loops[index]) {
+      glBegin(GL_LINE_STRIP);
+      for (const auto &curve : loop) {
+        for (size_t i = 0; i <= resolution; ++i) {
+          double t = (double)i / resolution;
+          t = curve->basis().low() * (1 - t) + curve->basis().high() * t;
+          auto p = curve->eval(t);
+          p = surface.eval(p[0], p[1]);
+          glVertex3dv(p.data());
+        }
+      }
+      glEnd();
+    }
   }
   glLineWidth(1.0);
   glDisable(GL_BLEND);
@@ -555,15 +576,16 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     QGLViewer::keyPressEvent(e);
 }
 
-MyViewer::MyMesh MyViewer::generateMesh(size_t i) {
+MyViewer::MyMesh MyViewer::generateMesh(size_t index) {
   MyMesh mesh;
   mesh.request_vertex_normals();
 
   std::vector<MyMesh::VertexHandle> handles, tri;
   std::vector<std::pair<MyMesh::VertexHandle, Vector>> normals;
 
-  const auto &surface = surfaces[i];
-  const auto &trims = trim_loops[i];
+  const auto &surface = surfaces[index];
+  const auto &trims = trim_loops[index];
+  auto flip = reversed[index];
 
   // Create the topology
   if (!show_trimmed || trims.empty()) {
@@ -654,9 +676,15 @@ MyViewer::MyMesh MyViewer::generateMesh(size_t i) {
     }
     for (int i = 0; i < out.numberoftriangles; ++i) {
       tri.clear();
-      tri.push_back(handles[out.trianglelist[3*i+0]]);
-      tri.push_back(handles[out.trianglelist[3*i+2]]);
-      tri.push_back(handles[out.trianglelist[3*i+1]]);
+      if (flip) {
+        tri.push_back(handles[out.trianglelist[3*i+0]]);
+        tri.push_back(handles[out.trianglelist[3*i+1]]);
+        tri.push_back(handles[out.trianglelist[3*i+2]]);
+      } else {
+        tri.push_back(handles[out.trianglelist[3*i+0]]);
+        tri.push_back(handles[out.trianglelist[3*i+2]]);
+        tri.push_back(handles[out.trianglelist[3*i+1]]);
+      }
       mesh.add_face(tri);
     }
 
@@ -673,13 +701,15 @@ MyViewer::MyMesh MyViewer::generateMesh(size_t i) {
   for (auto h : handles) {
     const auto &uv = mesh.point(h);
     Geometry::VectorMatrix der;
-    auto p = surface.eval(uv[0], uv[1], 2, der);
+    double u = std::clamp(uv[0], surface.basisU().low(), surface.basisU().high());
+    double v = std::clamp(uv[1], surface.basisV().low(), surface.basisV().high());
+    auto p = surface.eval(u, v, 2, der);
     auto &Su = der[1][0];
     auto &Sv = der[0][1];
     auto &Suu = der[2][0];
     auto &Suv = der[1][1];
     auto &Svv = der[0][2];
-    auto n = (Su ^ Sv).normalize();
+    auto n = (Su ^ Sv).normalize() * (flip ? -1 : 1);
     auto E = Su.normSqr();
     auto F = Su * Sv;
     auto G = Sv.normSqr();

@@ -72,7 +72,7 @@ private:
   // Visualization
   void setupCamera();
   void drawControlNet(const Geometry::BSSurface &surface) const;
-  void drawBoundaries(const Geometry::BSSurface &surface) const;
+  void drawBoundaries(size_t i) const;
   void drawIsolines(const Geometry::BSSurface &surface) const;
 
   //////////////////////
@@ -80,6 +80,7 @@ private:
   //////////////////////
 
   std::vector<Geometry::BSSurface> surfaces;
+  std::vector<bool> reversed;
   std::vector<std::vector<TrimLoop>> trim_loops;
   std::vector<MyMesh> meshes;
   size_t resolution, isoline_resolution;
