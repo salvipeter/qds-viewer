@@ -634,6 +634,11 @@ MyViewer::MyMesh MyViewer::generateMesh(size_t index) {
   } else {
     // Trimmed case - create mesh with the Triangle library
 
+    double lu = surface.basisU().low();
+    double lv = surface.basisV().low();
+    double hu = (surface.basisU().high() - lu);
+    double hv = (surface.basisV().high() - lv);
+
     std::vector<double> points;
     std::vector<int> segments;
     size_t start_index, end_index = 0;
@@ -644,8 +649,8 @@ MyViewer::MyMesh MyViewer::generateMesh(size_t index) {
           double t = (double)i / resolution;
           t = curve->basis().low() * (1 - t) + curve->basis().high() * t;
           auto p = curve->eval(t);
-          points.push_back(p[0]);
-          points.push_back(p[1]);
+          points.push_back((p[0] - lu) / hu);
+          points.push_back((p[1] - lv) / hv);
         }
       }
       end_index = points.size() / 2;
@@ -656,9 +661,7 @@ MyViewer::MyMesh MyViewer::generateMesh(size_t index) {
       segments.back() = start_index;
     }
 
-    double hu = (surface.basisU().high() - surface.basisU().low()) / resolution;
-    double hv = (surface.basisV().high() - surface.basisV().low()) / resolution;
-    double maxarea = hu * hv / 2;
+    double maxarea = 1.0 / (2.0 * resolution * resolution);
 
     // Setup output data structure
     struct triangulateio in, out;
@@ -689,7 +692,8 @@ MyViewer::MyMesh MyViewer::generateMesh(size_t index) {
 
     // Process the result
     for (int i = 0; i < out.numberofpoints; ++i) {
-      auto h = mesh.add_vertex(Vector(out.pointlist[2*i], out.pointlist[2*i+1], 0));
+      Vector v(lu + out.pointlist[2*i] * hu, lv + out.pointlist[2*i+1] * hv, 0);
+      auto h = mesh.add_vertex(v);
       handles.push_back(h);
     }
     for (int i = 0; i < out.numberoftriangles; ++i) {
