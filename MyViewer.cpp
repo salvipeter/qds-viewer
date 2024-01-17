@@ -167,6 +167,7 @@ bool MyViewer::findCurveLoops(const TrimLoop &curves, std::vector<TrimLoop> &loo
 }
 
 bool MyViewer::openQDS(std::string filename, bool update_view) {
+  reversed.clear();
   surfaces.clear();
   trim_loops.clear();
   try {
