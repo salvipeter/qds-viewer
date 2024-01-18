@@ -28,7 +28,7 @@ MyViewer::MyViewer(QWidget *parent) :
   mean_min(0.0), mean_max(0.0), mean_cutoff_ratio(0.05),
   gaussian_min(0.0), gaussian_max(0.0), gaussian_cutoff_ratio(0.05),
   show_control_points(false), show_boundaries(false), show_isolines(false),
-  show_solid(true), show_wireframe(false), show_trimmed(true),
+  show_solid(true), show_wireframe(false), show_trimmed(true), show_knotlines(false),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
   hidden(0), hidden_acc(0), last_filename("")
 {
@@ -290,6 +290,11 @@ void MyViewer::draw() {
       if (hidden != i + 1)
         drawIsolines(surfaces[i]);
 
+  if (show_knotlines)
+    for (size_t i = 0; i < surfaces.size(); ++i)
+      if (hidden != i + 1)
+        drawKnotlines(surfaces[i]);
+
   glPolygonMode(GL_FRONT_AND_BACK, !show_solid && show_wireframe ? GL_LINE : GL_FILL);
   glEnable(GL_POLYGON_OFFSET_FILL);
   glPolygonOffset(1, 1);
@@ -460,6 +465,42 @@ void MyViewer::drawIsolines(const Geometry::BSSurface &surface) const {
   glEnable(GL_LIGHTING);
 }
 
+void MyViewer::drawKnotlines(const Geometry::BSSurface &surface) const {
+  glDisable(GL_LIGHTING);
+  glEnable(GL_LINE_SMOOTH);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glLineWidth(3.0);
+  glColor3d(0.7, 0.3, 0.7);
+  for (size_t i = 0; i < 2; ++i) {
+    const auto &knots = i ? surface.basisV().knots() : surface.basisU().knots();
+    const auto ev = [&](double k) -> std::pair<Geometry::Point3D, Geometry::Point3D> {
+      if (i == 0)
+        return { surface.eval(k, surface.basisV().low()),
+                 surface.eval(k, surface.basisV().high()) };
+      return { surface.eval(surface.basisU().low(), k),
+               surface.eval(surface.basisU().high(), k) };
+    };
+    auto last = knots.front();
+    for (auto k : knots) {
+      if (k == last)
+        continue;
+      if (k == knots.back())
+        break;
+      last = k;
+      auto [p, q] = ev(k);
+      glBegin(GL_LINE_STRIP);
+      glVertex3dv(p.data());
+      glVertex3dv(q.data());
+      glEnd();
+    }
+  }
+  glLineWidth(1.0);
+  glDisable(GL_BLEND);
+  glDisable(GL_LINE_SMOOTH);
+  glEnable(GL_LIGHTING);
+}
+
 void MyViewer::keyPressEvent(QKeyEvent *e) {
   if (e->key() == Qt::Key_Question) {
     help();
@@ -519,6 +560,10 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       break;
     case Qt::Key_N:
       show_isolines = !show_isolines;
+      update();
+      break;
+    case Qt::Key_K:
+      show_knotlines = !show_knotlines;
       update();
       break;
     case Qt::Key_S:
@@ -767,6 +812,7 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;C: Toggle control polygon visualization</li>"
                "<li>&nbsp;B: Toggle boundary curve visualization</li>"
                "<li>&nbsp;N: Toggle isoline curve visualization</li>"
+               "<li>&nbsp;K: Toggle knotline visualization</li>"
                "<li>&nbsp;S: Toggle solid (filled polygon) visualization</li>"
                "<li>&nbsp;W: Toggle wireframe visualization</li>"
                "<li>&nbsp;&lt;n&gt;H: Hide surface #n (H shows it again)</li>"

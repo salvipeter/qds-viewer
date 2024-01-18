@@ -74,6 +74,7 @@ private:
   void drawControlNet(const Geometry::BSSurface &surface) const;
   void drawBoundaries(size_t i) const;
   void drawIsolines(const Geometry::BSSurface &surface) const;
+  void drawKnotlines(const Geometry::BSSurface &surface) const;
 
   //////////////////////
   // Member variables //
@@ -89,7 +90,7 @@ private:
   double mean_min, mean_max, mean_cutoff_ratio;
   double gaussian_min, gaussian_max, gaussian_cutoff_ratio;
   bool show_control_points, show_boundaries, show_isolines, show_solid, show_wireframe,
-    show_trimmed;
+    show_trimmed, show_knotlines;
   enum class Visualization { PLAIN, GAUSSIAN, MEAN, SLICING, ISOPHOTES } visualization;
   GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
   Vector slicing_dir;
