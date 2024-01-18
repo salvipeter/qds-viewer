@@ -474,12 +474,10 @@ void MyViewer::drawKnotlines(const Geometry::BSSurface &surface) const {
   glColor3d(0.7, 0.3, 0.7);
   for (size_t i = 0; i < 2; ++i) {
     const auto &knots = i ? surface.basisV().knots() : surface.basisU().knots();
-    const auto ev = [&](double k) -> std::pair<Geometry::Point3D, Geometry::Point3D> {
+    const auto ev = [&](double k, double t) {
       if (i == 0)
-        return { surface.eval(k, surface.basisV().low()),
-                 surface.eval(k, surface.basisV().high()) };
-      return { surface.eval(surface.basisU().low(), k),
-               surface.eval(surface.basisU().high(), k) };
+        return surface.eval(k, surface.basisV().low() * (1 - t) + surface.basisV().high() * t);
+      return surface.eval(surface.basisU().low() * (1 - t) + surface.basisU().high() * t, k);
     };
     auto last = knots.front();
     for (auto k : knots) {
@@ -488,10 +486,9 @@ void MyViewer::drawKnotlines(const Geometry::BSSurface &surface) const {
       if (k == knots.back())
         break;
       last = k;
-      auto [p, q] = ev(k);
       glBegin(GL_LINE_STRIP);
-      glVertex3dv(p.data());
-      glVertex3dv(q.data());
+      for (size_t j = 0; j < resolution; ++j)
+        glVertex3dv(ev(k, (double)j / (resolution - 1)).data());
       glEnd();
     }
   }
