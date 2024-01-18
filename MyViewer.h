@@ -1,6 +1,7 @@
 // -*- mode: c++ -*-
 #pragma once
 
+#include <set>
 #include <string>
 
 #include <QGLViewer/qglviewer.h>
@@ -95,7 +96,8 @@ private:
   GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
   Vector slicing_dir;
   double slicing_scaling;
-  size_t hidden, hidden_acc;
+  std::set<size_t> hidden;
+  size_t hidden_acc;
   std::string last_filename;
 };
 

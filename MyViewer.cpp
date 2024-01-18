@@ -30,7 +30,7 @@ MyViewer::MyViewer(QWidget *parent) :
   show_control_points(false), show_boundaries(false), show_isolines(false),
   show_solid(true), show_wireframe(false), show_trimmed(true), show_knotlines(false),
   visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
-  hidden(0), hidden_acc(0), last_filename("")
+  hidden_acc(0), last_filename("")
 {
 }
 
@@ -277,22 +277,22 @@ void MyViewer::init() {
 void MyViewer::draw() {
   if (show_control_points)
     for (size_t i = 0; i < surfaces.size(); ++i)
-      if (hidden != i + 1)
+      if (!hidden.contains(i))
         drawControlNet(surfaces[i]);
 
   if (show_boundaries)
     for (size_t i = 0; i < surfaces.size(); ++i)
-      if (hidden != i + 1)
+      if (!hidden.contains(i))
       drawBoundaries(i);
 
   if (show_isolines)
     for (size_t i = 0; i < surfaces.size(); ++i)
-      if (hidden != i + 1)
+      if (!hidden.contains(i))
         drawIsolines(surfaces[i]);
 
   if (show_knotlines)
     for (size_t i = 0; i < surfaces.size(); ++i)
-      if (hidden != i + 1)
+      if (!hidden.contains(i))
         drawKnotlines(surfaces[i]);
 
   glPolygonMode(GL_FRONT_AND_BACK, !show_solid && show_wireframe ? GL_LINE : GL_FILL);
@@ -316,7 +316,7 @@ void MyViewer::draw() {
       glEnable(GL_TEXTURE_1D);
     }
     for (size_t i = 0; i < meshes.size(); ++i)
-      if (hidden != i + 1) {
+      if (!hidden.contains(i)) {
         const auto &mesh = meshes[i];
         for (auto f : mesh.faces()) {
           glBegin(GL_POLYGON);
@@ -348,7 +348,7 @@ void MyViewer::draw() {
     glColor3d(0.0, 0.0, 0.0);
     glDisable(GL_LIGHTING);
     for (size_t i = 0; i < meshes.size(); ++i)
-      if (hidden != i + 1) {
+      if (!hidden.contains(i)) {
         const auto &mesh = meshes[i];
         for (auto f : mesh.faces()) {
           glBegin(GL_POLYGON);
@@ -585,11 +585,16 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_8: hidden_acc = hidden_acc * 10 + 8; break;
     case Qt::Key_9: hidden_acc = hidden_acc * 10 + 9; break;
     case Qt::Key_H:
-      if (hidden == 0)
-        hidden = hidden_acc;
-      else
-        hidden = 0;
-      hidden_acc = 0;
+      if (hidden_acc == 0)
+        hidden.clear();
+      else {
+        hidden_acc--;
+        if (hidden.contains(hidden_acc))
+          hidden.erase(hidden_acc);
+        else
+          hidden.insert(hidden_acc);
+        hidden_acc = 0;
+      }
       update();
       break;
     default:
@@ -815,7 +820,7 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;K: Toggle knotline visualization</li>"
                "<li>&nbsp;S: Toggle solid (filled polygon) visualization</li>"
                "<li>&nbsp;W: Toggle wireframe visualization</li>"
-               "<li>&nbsp;&lt;n&gt;H: Hide surface #n (H shows it again)</li>"
+               "<li>&nbsp;&lt;n&gt;H: Hide/show surface #n (H by itself shows all)</li>"
                "<li>&nbsp;?: This help</li>"
                "</ul>"
                "<p align=\"right\">Peter Salvi</p>");
