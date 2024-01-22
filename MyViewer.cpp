@@ -131,7 +131,6 @@ void MyViewer::setupCamera() {
 }
 
 bool MyViewer::findCurveLoops(const TrimLoop &curves, std::vector<TrimLoop> &loops) const {
-  double tolerance = 1e-10;
   std::list<TrimCurve> remaining(curves.begin(), curves.end());
   while (!remaining.empty()) {
     TrimLoop current;
@@ -139,28 +138,32 @@ bool MyViewer::findCurveLoops(const TrimLoop &curves, std::vector<TrimLoop> &loo
     remaining.pop_front();
     while (true) {
       const auto &p = current.back()->controlPoints().back();
-      bool found = false;
+      auto min_dist = std::numeric_limits<double>::max();
+      std::list<TrimCurve>::iterator min_curve;
+      bool reversed = false;
       for (auto it = remaining.begin(); it != remaining.end(); ++it) {
-        if ((p - (*it)->controlPoints().front()).norm() < tolerance)
-          found = true;
-        else if ((p - (*it)->controlPoints().back()).norm() < tolerance) {
-          (*it)->reverse();
-          found = true;
+        auto d = (p - (*it)->controlPoints().front()).norm();
+        if (d < min_dist) {
+          min_dist = d;
+          min_curve = it;
+          reversed = false;
         }
-        if (found) {
-          current.push_back(*it);
-          remaining.erase(it);
-          break;
+        d = (p - (*it)->controlPoints().back()).norm();
+        if (d < min_dist) {
+          min_dist = d;
+          min_curve = it;
+          reversed = true;
         }
       }
-      if (!found) {
-        if (current.size() != 1 &&
-            (p - current.front()->controlPoints().front()).norm() < tolerance) {
-          loops.push_back(current);
-          break;
-        }
-        return false;
+      auto d0 = (p - current.front()->controlPoints().front()).norm();
+      if (d0 < min_dist) {
+        loops.push_back(current);
+        break;
       }
+      if (reversed)
+        (*min_curve)->reverse();
+      current.push_back(*min_curve);
+      remaining.erase(min_curve);
     }
   }
   return true;
