@@ -597,12 +597,7 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       }
       update();
       break;
-    default:
-      QGLViewer::keyPressEvent(e);
-    }
-  else if (e->modifiers() == Qt::KeypadModifier)
-    switch (e->key()) {
-    case Qt::Key_Plus:
+    case Qt::Key_Equal:
       if (visualization == Visualization::SLICING)
         slicing_scaling *= 2;
       else if (show_isolines)
@@ -625,11 +620,14 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       }
       update();
       break;
-    case Qt::Key_Asterisk:
+    case Qt::Key_Slash:
       slicing_dir = Vector(static_cast<double *>(camera()->viewDirection()));
       update();
       break;
-    } else
+    default:
+      QGLViewer::keyPressEvent(e);
+    }
+  else
     QGLViewer::keyPressEvent(e);
 }
 
@@ -808,9 +806,9 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;G: Set Gaussian curvature map</li>"
                "<li>&nbsp;M: Set mean curvature map</li>"
                "<li>&nbsp;L: Set slicing map<ul>"
-               "<li>&nbsp;+: Increase resolution or isoline/slicing density</li>"
+               "<li>&nbsp;=: Increase resolution or isoline/slicing density</li>"
                "<li>&nbsp;-: Decrease resolution or isoline/slicing density</li>"
-               "<li>&nbsp;*: Set slicing direction to view</li></ul></li>"
+               "<li>&nbsp;/: Set slicing direction to view</li></ul></li>"
                "<li>&nbsp;I: Set isophote line map</li>"
                "<li>&nbsp;E: Set environment texture</li>"
                "<li>&nbsp;T: Toggle trimming</li>"
