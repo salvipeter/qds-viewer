@@ -67,6 +67,7 @@ private:
   // Mesh
   void updateMesh(bool update_curvature_range = true);
   void updateCurvatureMinMax();
+  void updateCurvatureTexture(GLuint texture, size_t size);
 
   MyMesh generateMesh(size_t i);
 
@@ -93,7 +94,10 @@ private:
   bool show_control_points, show_boundaries, show_isolines, show_solid, show_wireframe,
     show_trimmed, show_knotlines;
   enum class Visualization { PLAIN, GAUSSIAN, MEAN, SLICING, ISOPHOTES } visualization;
-  GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture;
+  enum class Curvature { CONTINUOUS, QUANTIZED, STRIPED } curvature_type;
+  GLuint isophote_texture, environment_texture, current_isophote_texture, slicing_texture,
+    mean_texture, gaussian_texture, striped_texture;
+  size_t mean_texture_size, gaussian_texture_size;
   Vector slicing_dir;
   double slicing_scaling;
   std::set<size_t> hidden;

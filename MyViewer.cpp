@@ -29,7 +29,8 @@ MyViewer::MyViewer(QWidget *parent) :
   gaussian_min(0.0), gaussian_max(0.0), gaussian_cutoff_ratio(0.05),
   show_control_points(false), show_boundaries(false), show_isolines(false),
   show_solid(true), show_wireframe(false), show_trimmed(true), show_knotlines(false),
-  visualization(Visualization::PLAIN), slicing_dir(0, 0, 1), slicing_scaling(1),
+  curvature_type(Curvature::CONTINUOUS), visualization(Visualization::PLAIN),
+  mean_texture_size(8), gaussian_texture_size(8), slicing_dir(0, 0, 1), slicing_scaling(1),
   hidden_acc(0), last_filename("")
 {
 }
@@ -38,6 +39,9 @@ MyViewer::~MyViewer() {
   glDeleteTextures(1, &isophote_texture);
   glDeleteTextures(1, &environment_texture);
   glDeleteTextures(1, &slicing_texture);
+  glDeleteTextures(1, &mean_texture);
+  glDeleteTextures(1, &gaussian_texture);
+  glDeleteTextures(1, &striped_texture);
 }
 
 void MyViewer::updateCurvatureMinMax() {
@@ -275,6 +279,38 @@ void MyViewer::init() {
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   static const unsigned char slicing_img[] = { 0b11111111, 0b00011100 };
   glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 2, 0, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, &slicing_img);
+
+  glGenTextures(1, &striped_texture);
+  glBindTexture(GL_TEXTURE_1D, striped_texture);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  static const unsigned char striped_img[] = { 0b11111111, 0b00000011 };
+  glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 2, 0, GL_RGB, GL_UNSIGNED_BYTE_3_3_2, &striped_img);
+
+  glGenTextures(1, &mean_texture);
+  updateCurvatureTexture(mean_texture, mean_texture_size);
+  glGenTextures(1, &gaussian_texture);
+  updateCurvatureTexture(gaussian_texture, gaussian_texture_size);
+}
+
+void MyViewer::updateCurvatureTexture(GLuint texture, size_t size) {
+  glBindTexture(GL_TEXTURE_1D, texture);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  std::vector<unsigned char> img;
+  for (size_t i = 0; i < size; ++i) {
+    auto rgb = HSV2RGB({(1 - (double)i / (size - 1)) * 240, 1, 1});
+    unsigned char c = 0;
+    for (size_t j = 0; j < 3; ++j) {
+      int k = std::round(rgb[j] * (j != 2 ? 7 : 3));
+      c += k << (j != 2 ? (1 - j) * 3 + 2 : 0);
+    }
+    img.push_back(c);
+  }
+  glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, size, 0, GL_RGB,
+               GL_UNSIGNED_BYTE_3_3_2, &img[0]);
 }
 
 void MyViewer::draw() {
@@ -313,8 +349,20 @@ void MyViewer::draw() {
       glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
       glEnable(GL_TEXTURE_GEN_S);
       glEnable(GL_TEXTURE_GEN_T);
-    } else if (visualization == Visualization::SLICING) {
+    } else if (visualization == Visualization::SLICING)
       glBindTexture(GL_TEXTURE_1D, slicing_texture);
+    else if (curvature_type == Curvature::STRIPED &&
+             (visualization == Visualization::MEAN ||
+              visualization == Visualization::GAUSSIAN))
+      glBindTexture(GL_TEXTURE_1D, striped_texture);
+    else if (visualization == Visualization::MEAN && curvature_type == Curvature::QUANTIZED)
+      glBindTexture(GL_TEXTURE_1D, mean_texture);
+    else if (visualization == Visualization::GAUSSIAN && curvature_type == Curvature::QUANTIZED)
+      glBindTexture(GL_TEXTURE_1D, gaussian_texture);
+    if (visualization == Visualization::SLICING ||
+        (curvature_type != Curvature::CONTINUOUS &&
+         (visualization == Visualization::MEAN ||
+          visualization == Visualization::GAUSSIAN))) {
       glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
       glEnable(GL_TEXTURE_1D);
     }
@@ -324,11 +372,24 @@ void MyViewer::draw() {
         for (auto f : mesh.faces()) {
           glBegin(GL_POLYGON);
           for (auto v : mesh.fv_range(f)) {
-            if (visualization == Visualization::MEAN)
-              glColor3dv(colorMap(mesh.data(v).mean, mean_min, mean_max));
-            else if (visualization == Visualization::GAUSSIAN)
-              glColor3dv(colorMap(mesh.data(v).gaussian, gaussian_min, gaussian_max));
-            else if (visualization == Visualization::SLICING)
+            if (visualization == Visualization::MEAN) {
+              if (curvature_type == Curvature::QUANTIZED)
+                glTexCoord1d((mesh.data(v).mean - mean_min) / (mean_max - mean_min));
+              else if (curvature_type == Curvature::STRIPED)
+                glTexCoord1d((mesh.data(v).mean - mean_min) /
+                             (mean_max - mean_min) * mean_texture_size);
+              else
+                glColor3dv(colorMap(mesh.data(v).mean, mean_min, mean_max));
+            } else if (visualization == Visualization::GAUSSIAN) {
+              if (curvature_type == Curvature::QUANTIZED)
+                glTexCoord1d((mesh.data(v).gaussian - gaussian_min) /
+                             (gaussian_max - gaussian_min));
+              else if (curvature_type == Curvature::STRIPED)
+                glTexCoord1d((mesh.data(v).gaussian - gaussian_min) /
+                             (gaussian_max - gaussian_min) * gaussian_texture_size);
+              else
+                glColor3dv(colorMap(mesh.data(v).gaussian, gaussian_min, gaussian_max));
+            } else if (visualization == Visualization::SLICING)
               glTexCoord1d(mesh.point(v) | slicing_dir * slicing_scaling);
             glNormal3dv(mesh.normal(v).data());
             glVertex3dv(mesh.point(v).data());
@@ -341,7 +402,10 @@ void MyViewer::draw() {
       glDisable(GL_TEXTURE_GEN_T);
       glDisable(GL_TEXTURE_2D);
       glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-    } else if (visualization == Visualization::SLICING) {
+    } else if (visualization == Visualization::SLICING ||
+               (curvature_type != Curvature::CONTINUOUS &&
+                (visualization == Visualization::MEAN ||
+                 visualization == Visualization::GAUSSIAN))) {
       glDisable(GL_TEXTURE_1D);
     }
   }
@@ -531,6 +595,14 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
       visualization = Visualization::MEAN;
       update();
       break;
+    case Qt::Key_Q:
+      switch (curvature_type) {
+      case Curvature::CONTINUOUS: curvature_type = Curvature::QUANTIZED; break;
+      case Curvature::QUANTIZED: curvature_type = Curvature::STRIPED; break;
+      case Curvature::STRIPED: curvature_type = Curvature::CONTINUOUS; break;
+      }
+      update();
+      break;
     case Qt::Key_L:
       visualization = Visualization::SLICING;
       update();
@@ -600,7 +672,13 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Equal:
       if (visualization == Visualization::SLICING)
         slicing_scaling *= 2;
-      else if (show_isolines)
+      else if (visualization == Visualization::MEAN) {
+        mean_texture_size *= 2;
+        updateCurvatureTexture(mean_texture, mean_texture_size);
+      } else if (visualization == Visualization::GAUSSIAN) {
+        gaussian_texture_size *= 2;
+        updateCurvatureTexture(gaussian_texture, gaussian_texture_size);
+      } else if (show_isolines)
         isoline_resolution *= 2;
       else {
         resolution *= 2;
@@ -611,6 +689,13 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Minus:
       if (visualization == Visualization::SLICING)
         slicing_scaling /= 2;
+      else if (visualization == Visualization::MEAN && mean_texture_size > 2) {
+        mean_texture_size /= 2;
+        updateCurvatureTexture(mean_texture, mean_texture_size);
+      } else if (visualization == Visualization::GAUSSIAN && gaussian_texture_size > 2) {
+        gaussian_texture_size /= 2;
+        updateCurvatureTexture(gaussian_texture, gaussian_texture_size);
+      }
       else if (show_isolines) {
         if (isoline_resolution > 5)
           isoline_resolution /= 2;
@@ -805,9 +890,10 @@ QString MyViewer::helpString() const {
                "<li>&nbsp;P: Set plain map (no coloring)</li>"
                "<li>&nbsp;G: Set Gaussian curvature map</li>"
                "<li>&nbsp;M: Set mean curvature map</li>"
+               "<li>&nbsp;Q: Toggle quantized/striped curvature</li>"
                "<li>&nbsp;L: Set slicing map<ul>"
-               "<li>&nbsp;=: Increase resolution or isoline/slicing density</li>"
-               "<li>&nbsp;-: Decrease resolution or isoline/slicing density</li>"
+               "<li>&nbsp;=: Increase resolution or isoline/slicing/curvature density</li>"
+               "<li>&nbsp;-: Decrease resolution or isoline/slicing/curvature density</li>"
                "<li>&nbsp;/: Set slicing direction to view</li></ul></li>"
                "<li>&nbsp;I: Set isophote line map</li>"
                "<li>&nbsp;E: Set environment texture</li>"
