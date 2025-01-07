@@ -689,12 +689,16 @@ void MyViewer::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Minus:
       if (visualization == Visualization::SLICING)
         slicing_scaling /= 2;
-      else if (visualization == Visualization::MEAN && mean_texture_size > 2) {
-        mean_texture_size /= 2;
-        updateCurvatureTexture(mean_texture, mean_texture_size);
-      } else if (visualization == Visualization::GAUSSIAN && gaussian_texture_size > 2) {
-        gaussian_texture_size /= 2;
-        updateCurvatureTexture(gaussian_texture, gaussian_texture_size);
+      else if (visualization == Visualization::MEAN) {
+        if (mean_texture_size > 2) {
+          mean_texture_size /= 2;
+          updateCurvatureTexture(mean_texture, mean_texture_size);
+        }
+      } else if (visualization == Visualization::GAUSSIAN) {
+        if (gaussian_texture_size > 2) {
+          gaussian_texture_size /= 2;
+          updateCurvatureTexture(gaussian_texture, gaussian_texture_size);
+        }
       }
       else if (show_isolines) {
         if (isoline_resolution > 5)
